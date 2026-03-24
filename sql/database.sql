@@ -1,11 +1,7 @@
 /**
- * HASHIP PROJECT - Cimientos de Base de Datos Relacional
+ * HASHIP PROJECT - Infraestructura de Datos Relacional
  * Autor: Nico (Lead Developer)
- * Versión: 1.0
- * * DESCRIPCIÓN:
- * Este script inicializa el entorno de persistencia de datos para Haship.
- * Implementa una arquitectura de Audit Trail (pista de auditoría) para
- * garantizar la integridad de los documentos y la trazabilidad de las firmas.
+ * Versión: 2.3 (Limpieza de Hashes y Sincronización)
  */
 
 -- ==========================================================
@@ -14,7 +10,6 @@
 CREATE DATABASE IF NOT EXISTS haship_db;
 USE haship_db;
 
--- Desactivamos cheques de integridad temporalmente para limpieza profunda
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS evidencias;
 DROP TABLE IF EXISTS documentos;
@@ -29,8 +24,8 @@ CREATE TABLE usuarios (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
-  password VARCHAR(255) NOT NULL, -- Almacenado mediante BCRYPT (PHP password_hash)
-  rol ENUM('administrador', 'cliente') DEFAULT 'cliente' NOT NULL,
+  password VARCHAR(255) NOT NULL, 
+  rol ENUM('administrador', 'remitente', 'destinatario') DEFAULT 'destinatario' NOT NULL,
   fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -39,22 +34,16 @@ CREATE TABLE usuarios (
 -- ==========================================================
 CREATE TABLE documentos (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  nombre_real VARCHAR(255) NOT NULL,       -- Nombre original del archivo subido
-  nombre_almacenado VARCHAR(255) NOT NULL, -- Nombre ofuscado en el servidor (bin2hex)
-  id_propietario INT NOT NULL,             -- Usuario que sube el documento (RRHH/Admin)
-  id_destinatario INT NULL,                -- Usuario asignado para la firma
-  estado ENUM('pendiente', 'validado', 'rechazado') DEFAULT 'pendiente' NOT NULL,
+  nombre_real VARCHAR(255) NOT NULL,
+  nombre_almacenado VARCHAR(255) NOT NULL,
+  id_propietario INT NOT NULL, 
+  id_destinatario INT NULL,
+  mensaje_contexto TEXT, 
+  estado ENUM('pendiente', 'validado', 'rechazado', 'expirado') DEFAULT 'pendiente' NOT NULL,
   fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  fecha_validacion DATETIME NULL,
+  hash_seguridad CHAR(64) NOT NULL, -- SHA-256
   
-  /**
-   * HASH_SEGURIDAD:
-   * Usamos CHAR(64) porque el algoritmo SHA-256 genera siempre una cadena
-   * de longitud fija. Esto optimiza el rendimiento de búsqueda e indexación.
-   */
-  hash_seguridad CHAR(64) NOT NULL,
-  
-  -- Integridad Referencial: Si se borra un propietario, sus docs desaparecen (CASCADE)
-  -- Si se borra un destinatario, el doc permanece pero queda huérfano (SET NULL)
   FOREIGN KEY (id_propietario) REFERENCES usuarios(id) ON DELETE CASCADE,
   FOREIGN KEY (id_destinatario) REFERENCES usuarios(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -66,9 +55,9 @@ CREATE TABLE evidencias (
   id INT AUTO_INCREMENT PRIMARY KEY,
   id_documento INT NOT NULL,
   id_usuario INT NULL, 
-  evento ENUM('SUBIDA', 'VISUALIZACION', 'FIRMA', 'RECHAZO', 'VERIFICACION_INTEGRIDAD') NOT NULL,
-  ip_origen VARCHAR(45) NOT NULL, -- Soporta IPv4 e IPv6 (máx 45 caracteres)
-  navegador_info TEXT,            -- User-Agent completo para peritaje técnico
+  evento ENUM('SUBIDA', 'VISUALIZACION', 'FIRMA', 'RECHAZO', 'LOGIN', 'VERIFICACION_INTEGRIDAD') NOT NULL,
+  ip_origen VARCHAR(45) NOT NULL,
+  navegador_info TEXT,
   fecha_evento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   
   FOREIGN KEY (id_documento) REFERENCES documentos(id) ON DELETE CASCADE,
@@ -79,20 +68,26 @@ CREATE TABLE evidencias (
 -- 5. AJUSTES DE SISTEMA (Configuración)
 -- ==========================================================
 CREATE TABLE configuracion_empresa (
-  id INT PRIMARY KEY,
-  nombre_empresa VARCHAR(255),
-  logo_ruta VARCHAR(255),
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nombre_empresa VARCHAR(255) DEFAULT 'Haship Corp',
+  logo_ruta VARCHAR(255) DEFAULT 'assets/img/logo_transparente.png',
   notificaciones_email BOOLEAN DEFAULT TRUE
 ) ENGINE=InnoDB;
 
 -- ==========================================================
--- 6. SEMILLAS (Seeders) - DATOS DE PRUEBA
+-- 6. SEMILLAS (Seeders) - ACCESO: admin123
 -- ==========================================================
--- Credenciales de Acceso: admin@haship.com | Contraseña: admin123
+
 INSERT INTO usuarios (nombre, email, password, rol) 
-VALUES (
-  'Nico Administrador', 
-  'admin@haship.com', 
-  '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', -- Hash de admin123
-  'administrador'
-);
+VALUES 
+('Nico Administrador', 'admin@haship.com', '$2y$10$7R0p/N8pL9YI0E6.6.v8IO7Bv9n6jLz6fUfH.h9E7O3.WfG8h.hK.', 'administrador'),
+('Empresa Remitente', 'remitente@haship.com', '$2y$10$7R0p/N8pL9YI0E6.6.v8IO7Bv9n6jLz6fUfH.h9E7O3.WfG8h.hK.', 'remitente'),
+('Cliente Destinatario', 'cliente@haship.com', '$2y$10$7R0p/N8pL9YI0E6.6.v8IO7Bv9n6jLz6fUfH.h9E7O3.WfG8h.hK.', 'destinatario');
+
+INSERT INTO configuracion_empresa (nombre_empresa) VALUES ('Haship - Certificación de Integridad');
+
+-- ==========================================================
+-- 7. ACTIVACIÓN/DESACTIVACIÓN DE NODOS
+-- ==========================================================
+
+ALTER TABLE usuarios ADD COLUMN activo TINYINT(1) DEFAULT 1;

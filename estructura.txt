@@ -1,0 +1,44 @@
+Haship/
+|-- almacenamiento/
+|   |-- uploads/
+|   |   |-- .htaccess
+|   |   |-- 16a5a0c9ebad3937438c.pdf
+|   |   |-- 45cdd724fe89c6d01938.pdf
+|   |-- readme
+|-- assets/
+|   |-- img/
+|   |   |-- logo_transparente.png
+        |-- logo_rojo.png
+        |-- logo.png
+|-- public/
+|   |-- js/
+|   |   |-- lang.js   
+|   |-- static/
+|   |   |-- estilo.css
+|   |   |-- script.js
+|   |-- admin_usuarios.php
+|   |-- dashboard.php
+|   |-- export_audit.php
+|   |-- index.php
+|   |-- registro_usuario.php
+|   |-- usuarios.php
+|   |-- vista_doc.php
+|-- sql/
+|   |-- database.sql
+|-- src/
+|   |-- php/
+|   |   |-- auth.php
+|   |   |-- config.php
+|   |   |-- db.php
+|   |   |-- delete_user.php
+|   |   |-- functions.php
+|   |   |-- logout.php
+|   |   |-- restore_user.php
+|   |   |-- sign_doc.php
+|   |   |-- upload.php
+|   |   |-- verify_integrity.php
+|   |   |-- view_pdf.php
+|   |-- python/
+|   |   |-- hasher.py
+|-- .gitignore
+|-- README.md

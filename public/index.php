@@ -1,176 +1,198 @@
 <?php
 /**
- * HASHIP PROJECT - Portal de Acceso (Login)
+ * HASHIP PROJECT - Terminal de Acceso de Seguridad
  * Autor: Nico (Lead Developer)
- * Versión: 1.1
+ * Versión: 3.4 (Apple Aesthetics Refresh)
  * * DESCRIPCIÓN:
- * Punto de entrada principal de la aplicación. Implementa la lógica de 
- * redirección inteligente (si hay sesión activa, salta al dashboard) y 
- * la gestión de estados de error mediante parámetros GET.
+ * Punto de entrada único con diseño minimalista, tipografía refinada
+ * y feedback visual de protocolos mediante acentos en rojo Apple.
  */
 
 session_start();
 
-/**
- * REDIRECCIÓN INTELIGENTE:
- * Si el motor de sesiones detecta un 'usuario_id', evitamos el re-login
- * para mejorar la experiencia de usuario (UX).
- */
+// Si ya hay sesión, saltamos directamente al nodo central
 if (isset($_SESSION['usuario_id'])) {
     header("Location: dashboard.php");
     exit();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Haship - Gestión de Evidencias Digitales</title>
-    
-    <link rel="stylesheet" href="static/estilo.css">
-    
+    <title>HASHIP - Secure Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /**
-         * UI DESIGN SYSTEM:
-         * Estilos críticos para garantizar la estabilidad visual durante la demo.
-         * Se utiliza una paleta de colores profesional (Slate & Blue) acorde 
-         * a una herramienta de seguridad.
-         */
+        :root {
+            --apple-red: #ff3b30; /* Rojo oficial Apple */
+            --apple-bg: #f5f5f7;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --input-bg: rgba(0, 0, 0, 0.04);
+            --glass-border: rgba(255, 255, 255, 0.7);
+        }
+
         body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            background-color: var(--apple-bg); 
+            height: 100vh; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
             margin: 0; 
-            background: #f4f7f6; /* Tono suave para reducir fatiga visual */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            /* Gradiente sutil para dar profundidad */
+            background-image: radial-gradient(circle at center, #ffffff 0%, #f5f5f7 100%);
         }
+
         .login-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            padding: 50px 40px;
+            border-radius: 32px;
+            border: 1px solid var(--glass-border);
             width: 100%;
-            max-width: 400px;
-            padding: 40px;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            max-width: 360px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.04);
             text-align: center;
-            border: 1px solid #e1e4e8;
         }
-        .login-card h1 { 
-            margin: 0 0 5px 0; 
-            color: #1a202c; 
-            font-size: 2.2rem; 
-            font-weight: 800;
-        }
-        .login-card p { 
-            color: #718096; 
-            margin-bottom: 30px; 
-            font-size: 0.95rem;
-        }
-        
-        .form-group { text-align: left; margin-bottom: 18px; }
+
+        /* --- BRANDING --- */
+        .brand { margin-bottom: 35px; }
+        .brand img { width: 55px; margin-bottom: 15px; }
+        .brand h1 { font-size: 28px; font-weight: 800; letter-spacing: -1px; margin: 0; }
+        .brand p { color: var(--text-secondary); font-size: 14px; margin-top: 5px; font-weight: 500; }
+
+        /* --- FORM ELEMENTS --- */
+        .form-group { margin-bottom: 18px; text-align: left; }
         .form-group label { 
             display: block; 
+            font-size: 12px; 
+            font-weight: 700; 
+            color: var(--text-secondary); 
             margin-bottom: 8px; 
-            font-weight: 600; 
-            color: #4a5568; 
-            font-size: 0.85rem;
+            margin-left: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
-        
+
         .form-control {
             width: 100%;
-            padding: 12px 15px;
-            border: 1.5px solid #e2e8f0;
-            border-radius: 10px;
+            padding: 14px 16px;
+            background: var(--input-bg);
+            border: 1px solid transparent;
+            border-radius: 14px;
+            color: var(--text-primary);
+            font-size: 15px;
+            font-weight: 500;
             box-sizing: border-box;
-            font-size: 1rem;
-            transition: all 0.2s ease;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .form-control:focus { 
-            border-color: #3182ce; 
-            box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
-            outline: none; 
+
+        .form-control:focus {
+            outline: none;
+            background: white;
+            border-color: rgba(0,0,0,0.1);
+            box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.03);
         }
 
         .btn-login {
             width: 100%;
             padding: 14px;
-            background: #3182ce;
+            background: var(--apple-red);
             color: white;
             border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 700;
+            border-radius: 980px; /* Pill shape */
+            font-weight: 600;
+            font-size: 15px;
             cursor: pointer;
-            transition: background 0.2s ease;
-            margin-top: 10px;
+            transition: all 0.2s ease;
+            margin-top: 15px;
         }
-        .btn-login:hover { background: #2c5282; }
 
-        /* Componente de Alerta de Error */
-        .error-msg {
-            color: #c53030;
-            background: #fff5f5;
-            border: 1px solid #feb2b2;
+        .btn-login:hover { 
+            opacity: 0.9; 
+            transform: scale(0.98); 
+        }
+
+        /* --- FEEDBACK MESSAGES --- */
+        .alert {
             padding: 12px;
-            border-radius: 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
             margin-bottom: 25px;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: 1px solid transparent;
+        }
+        .alert-error { 
+            background: rgba(255, 59, 48, 0.1); 
+            color: var(--apple-red); 
+            border-color: rgba(255, 59, 48, 0.1); 
+        }
+        .alert-success { 
+            background: rgba(52, 199, 89, 0.1); 
+            color: #248a3d; 
+            border-color: rgba(52, 199, 89, 0.1); 
+        }
+
+        .footer-tag { 
+            margin-top: 40px; 
+            font-size: 11px; 
+            color: var(--text-secondary); 
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
     </style>
 </head>
 <body>
 
-    <main class="login-card">
-        <header>
+    <div class="login-card">
+        <div class="brand">
+            <img src="../assets/img/logo_rojo.png" alt="Haship Logo">
             <h1>Haship</h1>
-            <p>Certificación de Integridad Documental</p>
-        </header>
+            <p>Acceso Seguro a Evidencias</p>
+        </div>
 
-        <?php 
-        /**
-         * LÓGICA DE NOTIFICACIONES:
-         * Interceptamos códigos de error enviados por el controlador auth.php
-         * para dar feedback inmediato al usuario.
-         */
-        if (isset($_GET['error'])): ?>
-            <div class="error-msg" role="alert">
-                <svg style="width:18px; height:18px; margin-right:8px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
+        <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-error">
                 <?php 
-                    echo ($_GET['error'] == 1) 
-                         ? "Credenciales incorrectas. Inténtalo de nuevo." 
-                         : "Acceso restringido. Por favor, inicia sesión.";
+                    if($_GET['error'] == 1) echo "CREDENCIALES INVÁLIDAS";
+                    if($_GET['error'] == 2) echo "SESIÓN EXPIRADA";
                 ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_GET['logout'])): ?>
+            <div class="alert alert-success">
+                SESIÓN FINALIZADA
             </div>
         <?php endif; ?>
 
         <form action="../src/php/auth.php" method="POST">
             <div class="form-group">
-                <label for="email">Correo Electrónico</label>
-                <input type="email" name="email" id="email" class="form-control" 
-                       placeholder="ejemplo@haship.com" required autocomplete="email">
+                <label>Correo Electrónico</label>
+                <input type="email" name="email" class="form-control" placeholder="nombre@dominio.com" required autofocus>
             </div>
 
             <div class="form-group">
-                <label for="password">Contraseña</label>
-                <input type="password" name="password" id="password" class="form-control" 
-                       placeholder="••••••••" required>
+                <label>Contraseña</label>
+                <input type="password" name="password" class="form-control" placeholder="••••••••" required>
             </div>
 
             <button type="submit" name="login" class="btn-login">
-                Entrar al sistema
+                Iniciar Protocolo
             </button>
         </form>
 
-        <footer style="margin-top: 30px; font-size: 0.7rem; color: #a0aec0; text-transform: uppercase; letter-spacing: 1.5px;">
-            &copy; 2026 HASHIP PROJECT | Infraestructura de Confianza
-        </footer>
-    </main>
+        <div class="footer-tag">
+            Nico v3.4 // Secure Infrastructure
+        </div>
+    </div>
 
 </body>
 </html>

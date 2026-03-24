@@ -3,7 +3,7 @@
 """
 HASHIP PROJECT - Motor Criptográfico de Integridad (SHA-256)
 Autor: Nico (Lead Developer)
-Versión: 1.0
+Versión: 1.1 (Sincronizado con Flujo PHP 2.0)
 -------------------------------------------------------------------------
 DESCRIPCIÓN:
 Este módulo de bajo nivel es el encargado de generar el "ADN digital" de 
@@ -12,8 +12,9 @@ SHA-256 para garantizar que cualquier modificación posterior al archivo,
 por mínima que sea, altere el hash resultante.
 
 INTEROPERABILIDAD:
-Invocado desde PHP (upload.php) mediante la función shell_exec().
-Recibe la ruta del archivo por sys.argv y devuelve el hash por stdout.
+Invocado desde PHP (upload.php / verify_integrity.php) mediante shell_exec().
+Recibe la ruta del archivo por sys.argv y devuelve ÚNICAMENTE el hash 
+limpio por stdout para evitar colisiones en la base de datos.
 -------------------------------------------------------------------------
 """
 
@@ -29,7 +30,7 @@ def generate_hash(file_path):
         file_path (str): Ruta absoluta o relativa al documento.
         
     Returns:
-        str: Representación hexadecimal del hash (64 caracteres) o mensaje de error.
+        str: Representación hexadecimal del hash (64 caracteres) o prefijo ERROR.
     """
     # Inicializamos el constructor del algoritmo SHA-256
     sha256_hash = hashlib.sha256()
@@ -48,11 +49,11 @@ def generate_hash(file_path):
         return sha256_hash.hexdigest()
         
     except FileNotFoundError:
-        return "ERROR: Archivo físico no localizado en la ruta especificada."
+        return "ERROR_FILE_NOT_FOUND"
     except PermissionError:
-        return "ERROR: Permisos insuficientes para leer el activo digital."
+        return "ERROR_PERMISSION_DENIED"
     except Exception as e:
-        return f"ERROR_SISTEMA: {str(e)}"
+        return f"ERROR_SYSTEM_{str(e)}"
 
 if __name__ == "__main__":
     # PUNTO DE ENTRADA (CLI):
@@ -62,9 +63,20 @@ if __name__ == "__main__":
         
         # Validamos que la ruta sea un archivo real antes de procesar
         if os.path.isfile(file_to_check):
-            print(generate_hash(file_to_check))
+            resultado = generate_hash(file_to_check)
+            
+            # VALIDACIÓN DE SALIDA: 
+            # Si el resultado es un hash válido (64 chars), lo imprimimos.
+            # Si no, enviamos el error al flujo de error (stderr) para no ensuciar el hash.
+            if len(resultado) == 64 and "ERROR" not in resultado:
+                sys.stdout.write(resultado)
+            else:
+                sys.stderr.write(resultado)
+                sys.exit(1)
         else:
-            print("ERROR: La ruta proporcionada no es un archivo válido.")
+            sys.stderr.write("ERROR_INVALID_PATH")
+            sys.exit(1)
     else:
-        # Si se ejecuta sin argumentos, mostramos el uso correcto
-        print("ERROR: Uso: python hasher.py <ruta_del_archivo>")
+        # Si se ejecuta sin argumentos, devolvemos error de uso
+        sys.stderr.write("ERROR_NO_ARGUMENTS_PROVIDED")
+        sys.exit(1)

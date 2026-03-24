@@ -1,21 +1,15 @@
 <?php
 /**
- * HASHIP PROJECT - Visor de Certificación y Terminal de Firma
+ * HASHIP PROJECT - Nodo de Auditoría de Alta Disponibilidad
  * Autor: Nico (Lead Developer)
- * Versión: 1.1
- * * DESCRIPCIÓN:
- * Este módulo actúa como la interfaz de revisión legal. Permite al usuario
- * contrastar visualmente el contenido del PDF con su Hash SHA-256 antes
- * de proceder a la firma electrónica.
+ * Versión: 3.0 (Integrity Node Interface)
  */
 
 require_once '../src/php/db.php';
 require_once '../src/php/auth.php';
 
-// Verificación de integridad de la sesión
 checkAuth();
 
-// Validación de parámetro de entrada
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     header("Location: dashboard.php");
     exit();
@@ -23,24 +17,32 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $id = $_GET['id'];
 
-/**
- * CONSULTA DE ACTIVOS:
- * Recuperamos los metadatos del documento para mostrar la trazabilidad.
- */
-$stmt = $pdo->prepare("SELECT * FROM documentos WHERE id = ?");
+// 1. EXTRACCIÓN DE METADATOS
+$stmt = $pdo->prepare("SELECT d.*, u_p.nombre as remitente 
+                       FROM documentos d 
+                       LEFT JOIN usuarios u_p ON d.id_propietario = u_p.id 
+                       WHERE d.id = ?");
 $stmt->execute([$id]);
 $doc = $stmt->fetch();
 
 if (!$doc) {
-    die("Error: El activo digital no existe en el repositorio.");
+    die("ERROR_CRITICAL: Activo no encontrado.");
 }
 
-/**
- * GESTIÓN DE RUTAS:
- * El visor apunta a la carpeta de almacenamiento ofuscado.
- * Añadimos '#toolbar=0' para una experiencia de lectura más limpia (UI).
- */
-$file_path = "../almacenamiento/uploads/" . $doc['nombre_almacenado'];
+// 2. MOTOR DE AUDITORÍA (Lógica optimizada)
+$relative_path = "../almacenamiento/uploads/" . $doc['nombre_almacenado'];
+$absolute_file_path = realpath($relative_path);
+$python_script = realpath("../src/python/hasher.py");
+
+$hash_actual = "LECTURA_FALLIDA";
+if ($absolute_file_path && file_exists($absolute_file_path)) {
+    $os_command = (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') ? 'python' : 'python3';
+    $command = "$os_command " . escapeshellarg($python_script) . " " . escapeshellarg($absolute_file_path);
+    $hash_actual = trim(shell_exec($command));
+}
+
+$es_integro = ($hash_actual === $doc['hash_seguridad']);
+$ip_auditor = $_SERVER['REMOTE_ADDR'];
 ?>
 
 <!DOCTYPE html>
@@ -48,132 +50,195 @@ $file_path = "../almacenamiento/uploads/" . $doc['nombre_almacenado'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificación - <?= htmlspecialchars($doc['nombre_real']) ?></title>
-    
+    <title>AUDITORÍA - <?= htmlspecialchars($doc['nombre_real']) ?></title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /**
-         * VISUAL DESIGN SYSTEM:
-         * Diseño enfocado en la legibilidad y la solemnidad del acto de firma.
-         */
+        :root {
+            --apple-blue: #007aff;
+            --apple-red: #ff3b30;
+            --apple-green: #34c759;
+            --apple-bg: #f5f5f7;
+            --text-main: #1d1d1f;
+            --text-sec: #86868b;
+        }
+
         body { 
-            font-family: 'Inter', 'Segoe UI', sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            background: #f8fafc; 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            background: var(--apple-bg); 
             margin: 0; 
-            padding: 40px 20px; 
-        }
-        
-        .container { width: 100%; max-width: 1000px; }
-
-        .header-panel { 
-            background: white; 
-            padding: 30px; 
-            border-radius: 16px; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
-            margin-bottom: 30px; 
-            border: 1px solid #e2e8f0;
+            padding: 40px 0; 
+            color: var(--text-main);
+            -webkit-font-smoothing: antialiased;
         }
 
-        h1 { color: #1e293b; margin-top: 0; font-size: 1.75rem; }
-        
-        /* Estilo para el Hash: Resaltado como dato crítico */
-        .hash-badge { 
-            background: #f1f5f9; 
-            color: #475569; 
-            padding: 8px 12px; 
-            border-radius: 8px; 
-            font-family: 'Fira Code', 'Courier New', monospace; 
-            font-size: 0.85em; 
-            border: 1px solid #cbd5e1;
-            word-break: break-all;
-            display: block;
+        .container { max-width: 1000px; margin: auto; padding: 0 20px; }
+
+        /* Status Banner */
+        .integrity-card {
+            padding: 24px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            border: 1px solid rgba(0,0,0,0.05);
+            backdrop-filter: blur(10px);
+        }
+
+        .integrity-ok { background: rgba(52, 199, 89, 0.1); color: #1a7f37; border-color: rgba(52, 199, 89, 0.2); }
+        .integrity-fail { background: rgba(255, 59, 48, 0.1); color: #d70015; border-color: rgba(255, 59, 48, 0.2); animation: shake 0.4s ease; }
+
+        /* Info Grid */
+        .audit-header {
+            background: white;
+            padding: 35px;
+            border-radius: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+            margin-bottom: 25px;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 40px;
+        }
+
+        h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 0 0 15px 0; }
+
+        .meta-list { font-size: 13px; color: var(--text-sec); list-style: none; padding: 0; margin: 0; }
+        .meta-list li { margin-bottom: 8px; display: flex; justify-content: space-between; border-bottom: 1px solid #f2f2f7; padding-bottom: 4px; }
+        .meta-list b { color: var(--text-main); }
+
+        /* Hash Display */
+        .hash-box {
+            background: #fbfbfd;
+            padding: 15px;
+            border-radius: 14px;
+            border: 1px solid #d2d2d7;
             margin-top: 10px;
         }
-        
-        /* Contenedor del Visor PDF */
-        .viewer-card { 
-            width: 100%; 
-            height: 700px; 
-            background: #334155; 
-            border-radius: 16px; 
-            overflow: hidden; 
-            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); 
-            border: 1px solid #1e293b; 
+        .hash-label { font-size: 10px; font-weight: 700; color: var(--text-sec); text-transform: uppercase; margin-bottom: 5px; display: block; }
+        .hash-value { font-family: 'Fira Code', monospace; font-size: 11px; word-break: break-all; color: #444; }
+
+        /* Viewer Area */
+        .viewer-frame {
+            width: 100%;
+            height: 600px;
+            background: #1c1c1e;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.1);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
         }
         iframe { width: 100%; height: 100%; border: none; }
-        
-        /* Panel de Acciones Finales */
-        .action-panel { 
-            margin-top: 30px; 
-            background: white; 
-            padding: 40px; 
-            border-radius: 16px; 
-            text-align: center; 
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+
+        /* Footer Actions */
+        .action-area {
+            margin-top: 30px;
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 24px;
         }
 
-        .btn-firmar { 
-            background: #10b981; 
-            color: white; 
-            padding: 18px 50px; 
-            border: none; 
-            border-radius: 12px; 
-            cursor: pointer; 
-            font-size: 1.1em; 
-            font-weight: 700; 
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.39);
-        }
-        .btn-firmar:hover { 
-            background: #059669; 
-            transform: translateY(-2px); 
-            box-shadow: 0 6px 20px rgba(5, 150, 105, 0.23);
+        .btn-main {
+            background: var(--apple-blue);
+            color: white;
+            padding: 16px 40px;
+            border-radius: 14px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
         }
 
-        .status-valid { color: #059669; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px; }
-        .btn-back { display: inline-block; margin-top: 25px; color: #64748b; text-decoration: none; font-size: 0.9em; font-weight: 500; }
-        .btn-back:hover { color: #1e293b; text-decoration: underline; }
+        .btn-main:hover:not(:disabled) { transform: scale(1.02); opacity: 0.9; }
+        .btn-main:disabled { background: #d2d2d7; cursor: not-allowed; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-10px); }
+            60% { transform: translateX(10px); }
+        }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <header class="header-panel">
-            <h1>Certificación de Activo Digital</h1>
-            <p style="color: #64748b; margin-bottom: 5px;">Documento: <strong><?= htmlspecialchars($doc['nombre_real']) ?></strong></p>
-            <p style="color: #64748b; margin: 0;">Hash de Seguridad (SHA-256):</p>
-            <code class="hash-badge"><?= $doc['hash_seguridad'] ?></code>
-        </header>
-
-        <div class="viewer-card">
-            <iframe src="<?= $file_path ?>#toolbar=0"></iframe>
-        </div>
-
-        <div class="action-panel">
-            <?php if ($doc['estado'] == 'pendiente'): ?>
-                <form action="../src/php/sign_doc.php" method="POST">
-                    <input type="hidden" name="id_doc" value="<?= $doc['id'] ?>">
-                    <p style="color: #475569; line-height: 1.6; max-width: 600px; margin: 0 auto 30px auto;">
-                        Al proceder con la firma, usted manifiesta su conformidad con el contenido íntegro del documento superior. 
-                        Este acto generará una evidencia digital inmutable vinculada a su identidad técnica.
-                    </p>
-                    <button type="submit" class="btn-firmar">Confirmar Firma Electrónica</button>
-                </form>
-            <?php else: ?>
-                <div class="status-valid">
-                    <svg style="width:30px;height:30px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <span style="font-size: 1.5rem;">Documento Certificado y Firmado</span>
-                </div>
-                <p style="color: #64748b; margin-top: 10px;">La integridad de este archivo ha sido validada contra el registro original.</p>
-                <a href="dashboard.php" class="btn-back">← Volver al Panel de Gestión</a>
-            <?php endif; ?>
+<div class="container">
+    <div class="integrity-card <?= $es_integro ? 'integrity-ok' : 'integrity-fail' ?>">
+        <div style="font-size: 32px;"><?= $es_integro ? '✓' : '⚠' ?></div>
+        <div>
+            <div style="font-weight: 700; font-size: 15px;">
+                <?= $es_integro ? 'ACTIVO ÍNTEGRO' : 'ERROR DE CONSISTENCIA' ?>
+            </div>
+            <div style="font-size: 13px; opacity: 0.9;">
+                <?= $es_integro 
+                    ? "La huella criptográfica SHA-256 coincide con el registro original de la base de datos." 
+                    : "Se ha detectado una alteración en el binario físico. El protocolo de firma ha sido bloqueado." ?>
+            </div>
         </div>
     </div>
+
+    <main class="audit-header">
+        <div>
+            <span style="font-size: 11px; font-weight: 700; color: var(--apple-blue); text-transform: uppercase;">Expediente Digital</span>
+            <h1><?= htmlspecialchars($doc['nombre_real']) ?></h1>
+            
+            <ul class="meta-list">
+                <li><span>Originador:</span> <b><?= htmlspecialchars($doc['remitente']) ?></b></li>
+                <li><span>ID Nodo:</span> <b>#<?= str_pad($doc['id'], 6, "0", STR_PAD_LEFT) ?></b></li>
+                <li><span>Fecha Ingreso:</span> <b><?= date("d M Y, H:i", strtotime($doc['fecha_subida'])) ?></b></li>
+                <li><span>IP Auditor:</span> <b><?= $ip_auditor ?></b></li>
+            </ul>
+        </div>
+
+        <div>
+            <div class="hash-box">
+                <span class="hash-label">Referencia en Base de Datos</span>
+                <div class="hash-value"><?= $doc['hash_seguridad'] ?></div>
+            </div>
+            <div class="hash-box" style="margin-top: 15px; border-color: <?= $es_integro ? 'var(--apple-green)' : 'var(--apple-red)' ?>">
+                <span class="hash-label">Resultado Escaneo en Tiempo Real</span>
+                <div class="hash-value" style="color: <?= $es_integro ? 'var(--apple-green)' : 'var(--apple-red)' ?>;">
+                    <?= $hash_actual ?>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="viewer-frame">
+        <iframe src="../src/php/view_pdf.php?id=<?= $doc['id'] ?>"></iframe>
+    </div>
+
+    <div class="action-area">
+        <?php if ($doc['estado'] == 'pendiente'): ?>
+            <form action="../src/php/sign_doc.php" method="POST">
+                <input type="hidden" name="id_doc" value="<?= $doc['id'] ?>">
+                <button type="submit" class="btn-main" <?= !$es_integro ? 'disabled' : '' ?>>
+                    Estampar Firma Digital Inmutable
+                </button>
+                <?php if (!$es_integro): ?>
+                    <p style="color: var(--apple-red); font-size: 12px; margin-top: 15px; font-weight: 600;">
+                        Acción bloqueada por fallo de seguridad SHA-256.
+                    </p>
+                <?php endif; ?>
+            </form>
+        <?php else: ?>
+            <div style="color: var(--apple-green); font-weight: 700; font-size: 18px; margin-bottom: 20px;">
+                ● DOCUMENTO CERTIFICADO Y SELLADO
+            </div>
+            <a href="export_audit.php?id=<?= $doc['id'] ?>" class="btn-main" style="background: var(--text-main);">
+                Descargar Reporte de Evidencia
+            </a>
+        <?php endif; ?>
+
+        <a href="dashboard.php" style="display: block; margin-top: 30px; color: var(--text-sec); font-size: 12px; text-decoration: none; font-weight: 500;">
+            ← Regresar al Panel Principal
+        </a>
+    </div>
+</div>
 
 </body>
 </html>
