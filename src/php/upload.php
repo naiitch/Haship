@@ -2,12 +2,12 @@
 /**
  * HASHIP PROJECT - Gestor de Ingesta y Certificación de Documentos
  * Autor: Nico (Lead Developer)
- * Versión: 2.1 (Sincronizado con Schema 2.0)
+ * Versión: 3.0 (Update Examen RA - Integración Multicapa)
  * * DESCRIPCIÓN:
- * Este módulo gestiona el ciclo de vida inicial de una evidencia: 
- * recepción del binario, almacenamiento seguro, invocación del motor de 
- * hashing externo (Python) y registro de trazabilidad en la base de datos.
- * Implementa soporte para asignación de destinatarios y mensajes de contexto.
+ * Evolución del módulo de ingesta con soporte para:
+ * - RA3/RA6: Validación avanzada de tipos y control de excepciones.
+ * - RA8/RA9: Persistencia híbrida (MySQL + Log de Auditoría JSONL).
+ * - RA5: Gestión de flujos de E/S de archivos binarios.
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -16,129 +16,116 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once 'db.php';
 require_once 'auth.php';
+// RA8: Importación de la lógica de persistencia no relacional
+require_once 'Logger.php'; 
 
 /**
  * PROTECCIÓN DE ACCESO:
- * Solo usuarios autenticados (Remitentes o Administradores) pueden realizar cargas.
+ * Solo usuarios autenticados pueden realizar cargas.
  */
 checkAuth();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['documento'])) {
     
-    // Captura de datos del formulario (Schema 2.0)
-    $file = $_FILES['documento'];
-    $nombre_real = $file['name'];
-    $ext = strtolower(pathinfo($nombre_real, PATHINFO_EXTENSION));
-    
-    // Captura de metadatos de negocio
-    $id_destinatario = !empty($_POST['id_destinatario']) ? $_POST['id_destinatario'] : null;
-    $mensaje_contexto = isset($_POST['mensaje_contexto']) ? trim($_POST['mensaje_contexto']) : '';
-
     /**
-     * 1. VALIDACIÓN DE PROTOCOLO:
-     * Restricción estricta a PDF para garantizar la inmutabilidad visual 
-     * y la compatibilidad con el motor de hashing.
+     * RA3/RA6: GESTIÓN DE EXCEPCIONES Y TIPOS AVANZADOS
+     * Envolvemos el proceso en un bloque try para garantizar la integridad (RA9)
+     * y utilizamos estructuras de datos para validaciones robustas.
      */
-    if ($ext !== 'pdf') {
-        header("Location: ../../public/dashboard.php?error=formato");
-        exit();
-    }
+    try {
+        // Captura de datos
+        $file = $_FILES['documento'];
+        $nombre_real = $file['name'];
+        
+        // RA6: Manipulación de información mediante tipos avanzados (Arrays de configuración)
+        $extensiones_permitidas = ['pdf', 'png', 'jpg']; 
+        $ext = strtolower(pathinfo($nombre_real, PATHINFO_EXTENSION));
+        
+        // 1. VALIDACIÓN DE PROTOCOLO (RA3: Estructura de control preventiva)
+        if (!in_array($ext, $extensiones_permitidas)) {
+            throw new Exception("Formato de archivo no soportado para certificación.");
+        }
 
-    /**
-     * 2. OFUSCACIÓN DE ALMACENAMIENTO:
-     * Generamos un nombre pseudoaleatorio criptográficamente seguro (20 caracteres).
-     * Esto previene ataques de enumeración (IDOR) y colisiones de nombres.
-     */
-    $nombre_almacenado = bin2hex(random_bytes(10)) . ".pdf";
-    $directorio_destino = "../../almacenamiento/uploads/";
-    $ruta_final = $directorio_destino . $nombre_almacenado;
-
-    // Gestión automática de infraestructura de directorios
-    if (!is_dir($directorio_destino)) {
-        mkdir($directorio_destino, 0777, true);
-    }
-
-    // Persistencia física del binario
-    if (move_uploaded_file($file['tmp_name'], $ruta_final)) {
+        // Captura de metadatos de negocio
+        $id_destinatario = !empty($_POST['id_destinatario']) ? $_POST['id_destinatario'] : null;
+        $mensaje_contexto = isset($_POST['mensaje_contexto']) ? trim($_POST['mensaje_contexto']) : '';
 
         /**
-         * 3. INTEROPERABILIDAD PHP-PYTHON (The Python Effect):
-         * Invocamos el script 'hasher.py' para procesar el archivo.
-         * Utilizamos escapeshellarg() para sanitizar la ruta y prevenir RCE.
+         * 2. OFUSCACIÓN Y PREPARACIÓN DE E/S (RA5):
+         * Generamos un nombre pseudoaleatorio para evitar ataques de enumeración.
+         */
+        $nombre_almacenado = bin2hex(random_bytes(10)) . "." . $ext;
+        $directorio_destino = "../../almacenamiento/uploads/";
+        $ruta_final = $directorio_destino . $nombre_almacenado;
+
+        if (!is_dir($directorio_destino)) {
+            mkdir($directorio_destino, 0777, true);
+        }
+
+        // Persistencia física del binario (RA5: Operación de Salida)
+        if (!move_uploaded_file($file['tmp_name'], $ruta_final)) {
+            throw new Exception("Fallo en la persistencia física del binario (I/O Error).");
+        }
+
+        /**
+         * 3. MOTOR DE INTEGRIDAD CRIPTOGRÁFICA (The Python Effect):
+         * RA9: Asegurando la consistencia mediante hashing externo.
          */
         $ruta_script_python = "../python/hasher.py";
-        
-        // El comando asume que el intérprete de python está en el PATH
-        // Cambia la línea del comando por esta para asegurar compatibilidad
         $comando = "python3 " . escapeshellarg($ruta_script_python) . " " . escapeshellarg(realpath($ruta_final)) . " 2>&1";
-        
-        // shell_exec captura el hash SHA-256 devuelto por el script de Python
         $hash_generado = trim(shell_exec($comando));
 
-        /**
-         * VALIDACIÓN DEL HASH:
-         * Si el motor de Python falla, recurrimos a la función nativa de PHP
-         * para no detener el flujo de negocio, marcando la incidencia.
-         */
+        // Fallback de seguridad si el motor Python no responde
         if (empty($hash_generado) || strlen($hash_generado) !== 64) {
             $hash_generado = hash_file('sha256', $ruta_final);
         }
 
         /**
-         * 4. TRANSACCIÓN ATÓMICA (ACID):
-         * Garantizamos que el registro del documento y su evidencia de auditoría
-         * se realicen como una única unidad de trabajo indivisible.
+         * 4. TRANSACCIÓN ATÓMICA Y PERSISTENCIA (RA8/RA9):
+         * Sincronizamos MySQL con nuestro nuevo sistema de Log JSONL.
          */
-        try {
-            $pdo->beginTransaction();
+        $pdo->beginTransaction();
 
-            // REGISTRO 1: Metadatos del activo digital (Tabla 'documentos')
-            $query_doc = "INSERT INTO documentos 
-                          (nombre_real, nombre_almacenado, id_propietario, id_destinatario, mensaje_contexto, hash_seguridad, estado) 
-                          VALUES (?, ?, ?, ?, ?, ?, 'pendiente')";
-            
-            $stmt = $pdo->prepare($query_doc);
-            $stmt->execute([
-                $nombre_real, 
-                $nombre_almacenado, 
-                $_SESSION['usuario_id'], 
-                $id_destinatario, 
-                $mensaje_contexto, 
-                $hash_generado
-            ]);
+        $query_doc = "INSERT INTO documentos 
+                      (nombre_real, nombre_almacenado, id_propietario, id_destinatario, mensaje_contexto, hash_seguridad, estado) 
+                      VALUES (?, ?, ?, ?, ?, ?, 'pendiente')";
+        
+        $stmt = $pdo->prepare($query_doc);
+        $stmt->execute([
+            $nombre_real, 
+            $nombre_almacenado, 
+            $_SESSION['usuario_id'], 
+            $id_destinatario, 
+            $mensaje_contexto, 
+            $hash_generado
+        ]);
 
-            $doc_id = $pdo->lastInsertId();
+        $doc_id = $pdo->lastInsertId();
 
-            /**
-             * 5. AUDIT TRAIL (Pista de Auditoría):
-             * Vinculamos legalmente el evento de 'SUBIDA' con la IP y el User Agent.
-             */
-            $query_ev = "INSERT INTO evidencias (id_documento, id_usuario, evento, ip_origen, navegador_info) 
-                         VALUES (?, ?, 'SUBIDA', ?, ?)";
-            
-            $stmt_ev = $pdo->prepare($query_ev);
-            $stmt_ev->execute([
-                $doc_id, 
-                $_SESSION['usuario_id'], 
-                $_SERVER['REMOTE_ADDR'], 
-                $_SERVER['HTTP_USER_AGENT']
-            ]);
+        // RA8: PERSISTENCIA EN LOG TEXTUAL (JSONL)
+        // Registramos el evento de forma persistente fuera de la DB relacional.
+        $logger = new AuditLogger('../../storage/audit_log.jsonl');
+        $logger->loguear("UPLOAD_SUCCESS", $_SESSION['usuario_id'], ["doc_id" => $doc_id, "hash" => $hash_generado]);
 
-            $pdo->commit(); // Consolidación definitiva
-            
-            header("Location: ../../public/dashboard.php?msg=upload_ok");
-            exit();
+        $pdo->commit(); 
+        
+        header("Location: ../../public/dashboard.php?msg=upload_ok");
+        exit();
 
-        } catch (Exception $e) {
-            $pdo->rollBack(); // Reversión total para evitar inconsistencias
-            error_log("Fallo en transacción de subida Haship: " . $e->getMessage());
-            die("Error crítico de persistencia: " . $e->getMessage());
+    } catch (Exception $e) {
+        // RA3/RA9: En caso de error, revertimos cambios para mantener la consistencia
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
         }
         
-    } else {
-        header("Location: ../../public/dashboard.php?error=io");
+        // Registro del error para depuración técnica
+        error_log("CRITICAL_ERROR [upload.php]: " . $e->getMessage());
+        
+        // Redirección con feedback al usuario
+        header("Location: ../../public/dashboard.php?error=" . urlencode($e->getMessage()));
         exit();
     }
+
 } else {
     header("Location: ../../public/dashboard.php");
     exit();

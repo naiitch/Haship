@@ -34,3 +34,24 @@ function getUsuarioNombre($pdo, $id) {
     $res = $stmt->fetch();
     return $res ? $res['nombre'] : "Usuario desconocido";
 }
+
+function registrarLogAuditoria($evento, $usuario, $detalles) {
+    // 1. Definimos la ruta del archivo
+    $relative_path = '../../storage/audit_log.jsonl';
+    
+    // 2. Preparamos los datos (RA6: Tipos de datos avanzados / RA8: Persistencia)
+    $logEntry = [
+        "timestamp" => date("c"), // Formato ISO 8601
+        "evento"    => $evento,
+        "usuario"   => $usuario,
+        "detalles"  => $detalles
+    ];
+
+    // 3. Convertimos a JSON y añadimos un salto de línea (Formato JSONL)
+    $jsonLine = json_encode($logEntry) . PHP_EOL;
+
+    // 4. RA8: Gestión de persistencia. 
+    // FILE_APPEND lo crea si no existe. 
+    // LOCK_EX evita que dos procesos escriban al mismo tiempo (integridad RA9).
+    file_put_contents($relative_path, $jsonLine, FILE_APPEND | LOCK_EX);
+}

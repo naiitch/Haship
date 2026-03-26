@@ -7,7 +7,10 @@
 
 require_once 'db.php';
 require_once 'auth.php';
+require_once 'Logger.php'; // RA8: Importamos la clase de auditoría para registrar eventos
 
+$logger = new AuditLogger();
+$logger->loguear("FIRMA_DOCUMENTO", $_SESSION['usuario_id'], ["doc_id" => $_POST['id']]);
 checkAuth();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['id_doc'])) {

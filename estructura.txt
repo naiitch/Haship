@@ -8,8 +8,8 @@ Haship/
 |-- assets/
 |   |-- img/
 |   |   |-- logo_transparente.png
-        |-- logo_rojo.png
-        |-- logo.png
+|   |   |-- logo_rojo.png
+|   |   |-- logo.png
 |-- public/
 |   |-- js/
 |   |   |-- lang.js   
